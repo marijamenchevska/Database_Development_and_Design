@@ -845,6 +845,8 @@ WHERE s.album_id < 25
 GROUP BY s.artist_id
 HAVING COUNT(s.id) > 10
 
+-- 2/2
+
 -- Find the song count, maximal duration, and the average duration per artist on all songs in the system. Filter only records where maximal duration is more than the average duration
 SELECT s.artist_id, COUNT(s.id) AS song_count, AVG(s.duration) AS avg_song_duration, MAX(s.duration) AS max_song_duration
 FROM song s
