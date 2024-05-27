@@ -830,7 +830,7 @@ BEGIN
 
 	RETURN average_album_rating;
 END;
-$$
+$$;
 
 SELECT get_album_rating_by_artist('Rihanna')
 
@@ -869,7 +869,7 @@ BEGIN
 		
 	RETURN longest_song_name;
 END;
-$$
+$$;
 
 SELECT get_longest_song_by_genre('Pop')
 
@@ -912,7 +912,7 @@ BEGIN
 -- 	RETURN artist_name || '''s best rated album is ' || album_name;
 	RETURN CONCAT(artist_name, '''s best rated album is ', album_name);
 END;
-$$
+$$;
 
 SELECT get_artist_best_rated_album('Rihanna')
 
@@ -954,7 +954,7 @@ BEGIN
 	
 	RETURN genres;
 END;
-$$
+$$;
 
 SELECT get_artist_song_genres('Rihanna')
 
@@ -980,7 +980,7 @@ BEGIN
 	
 	RETURN number_of_songs;
 END;
-$$
+$$;
 
 SELECT album_songs('Scorpion')
 
@@ -1007,7 +1007,7 @@ BEGIN
 	
 	RETURN number_of_songs;
 END;
-$$
+$$;
 
 SELECT playlist_songs('Chill Vibes')
 
@@ -1034,7 +1034,7 @@ BEGIN
 	
 	RETURN number_of_songs;
 END;
-$$
+$$;
 
 SELECT genre_songs('Pop')
 
