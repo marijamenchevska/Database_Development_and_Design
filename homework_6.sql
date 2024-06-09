@@ -805,246 +805,42 @@ INSERT INTO songs_genres (song_id, genre_id) VALUES
 (37, 4),
 (39, 2);
 
+SELECT setval(pg_get_serial_sequence('playlist', 'id'), (SELECT MAX(id) FROM playlist));
+SELECT setval(pg_get_serial_sequence('song', 'id'), (SELECT MAX(id) FROM song));
+SELECT setval(pg_get_serial_sequence('album', 'id'), (SELECT MAX(id) FROM album));
+SELECT setval(pg_get_serial_sequence('artist', 'id'), (SELECT MAX(id) FROM artist));
+SELECT setval(pg_get_serial_sequence('song_lyrics', 'id'), (SELECT MAX(id) FROM song_lyrics));
+SELECT setval(pg_get_serial_sequence('genre', 'id'), (SELECT MAX(id) FROM genre));
+SELECT setval(pg_get_serial_sequence('artist_details', 'id'), (SELECT MAX(id) FROM artist_details));
 
-
--- Calculate rating of album by artist
-CREATE OR REPLACE FUNCTION get_album_rating_by_artist (artist_name VARCHAR)
-RETURNS DECIMAL
-LANGUAGE PLPGSQL
-AS 
-$$
-DECLARE
-	v_artist_id INTEGER;
-	average_album_rating DECIMAL;
-BEGIN
-	SELECT id
-	INTO v_artist_id
-	FROM artist
-	WHERE name = artist_name;
-	
-	SELECT AVG(al.rating) 
-	INTO average_album_rating
-	FROM song s 
-	INNER JOIN album al ON s.album_id = al.id
-	WHERE s.artist_id = v_artist_id;
-
-	RETURN average_album_rating;
-END;
-$$;
-
-SELECT get_album_rating_by_artist('Rihanna')
-
--- CHECK
--- SELECT id
--- FROM artist
--- WHERE name = 'Rihanna';
-
--- SELECT AVG(al.rating) 
--- FROM song s 
--- INNER JOIN album al ON s.album_id = al.id
--- WHERE s.artist_id = 4
-
--- Get longest song by genre
-CREATE OR REPLACE FUNCTION get_longest_song_by_genre(genre_name VARCHAR)
-RETURNS VARCHAR
+-- Create a stored procedure, called add_song_to_album, which, when called, will insert a new song into the song table, associate it with an album, and optionally insert lyrics
+CREATE OR REPLACE PROCEDURE add_song_to_album(
+	p_name VARCHAR,
+    p_duration INTERVAL,
+    p_explicit BOOLEAN,
+    p_artist_id INTEGER,
+    p_album_id INTEGER,
+	p_lyrics TEXT
+)
 LANGUAGE PLPGSQL
 AS
 $$
 DECLARE
-	v_genre_id INTEGER;
-	longest_song_name VARCHAR;
+	v_song_id INTEGER;
 BEGIN
-	SELECT id
-	INTO v_genre_id
-	FROM genre
-	WHERE name = genre_name;
+	INSERT INTO song (name, duration, explicit, artist_id, album_id)
+	VALUES (p_name, p_duration, p_explicit, p_artist_id, p_album_id) 
+	RETURNING id INTO v_song_id;
 	
-	SELECT s.name
-	INTO longest_song_name
-	FROM song s
-	INNER JOIN songs_genres sg ON s.id = sg.song_id
-	WHERE sg.genre_id = v_genre_id
-	ORDER BY s.duration DESC 
-	LIMIT 1;
-		
-	RETURN longest_song_name;
+	INSERT INTO song_lyrics (lyrics, song_id)
+	VALUES (p_lyrics, v_song_id);
+	
+	COMMIT;
 END;
 $$;
 
-SELECT get_longest_song_by_genre('Pop')
+CALL add_song_to_album('Test', '4m', true, 1, 1, 'Some text');
 
--- CHECK
--- SELECT id 
--- FROM genre
--- WHERE name = 'Pop';
-
--- SELECT s.name, s.duration
--- FROM song s
--- INNER JOIN songs_genres sg ON s.id = sg.song_id
--- WHERE sg.genre_id = 2
--- ORDER BY s.duration DESC
-
--- Create text like "<Artist_Name> best rated album is <Name_of_album>”
--- In this concrete database, every artist has only one album
-CREATE OR REPLACE FUNCTION get_artist_best_rated_album(artist_name VARCHAR)
-RETURNS TEXT
-LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-	v_artist_id INTEGER;
-	album_name VARCHAR;
-	album_rating DECIMAL;
-BEGIN
-	SELECT id
-	INTO v_artist_id
-	FROM artist
-	WHERE name = artist_name;
-	
-	SELECT DISTINCT al.name, al.rating -- if we want to be more precise, i.e. only get unique albums, DISTINCT is needed here because after joining and conditioning with WHERE, there are multiple copies of the album (there are multiple songs in the same album) 
-	INTO album_name, album_rating -- DISTINCT forces the al.rating to also be selected, which is why another variable (album_rating) is created, even though it's never used
-	FROM album al
-	INNER JOIN song s ON al.id = s.album_id
-	WHERE s.artist_id = v_artist_id
-	ORDER BY al.rating DESC -- technically not necessary in this case
-	LIMIT 1; 
-	
--- 	RETURN artist_name || '''s best rated album is ' || album_name;
-	RETURN CONCAT(artist_name, '''s best rated album is ', album_name);
-END;
-$$;
-
-SELECT get_artist_best_rated_album('Rihanna')
-
--- CHECK
--- SELECT id
--- FROM artist
--- WHERE name = 'Rihanna';
-
--- SELECT DISTINCT al.name, al.rating
--- FROM album al
--- INNER JOIN song s ON al.id = s.album_id
--- WHERE s.artist_id = 4
--- ORDER BY al.rating DESC
-
--- Create a temp table with playlist that has songs which are in albums which are good rated (4.5+ rating)
-CREATE TEMP TABLE playlist_songs_from_good_rated_albums AS
-SELECT DISTINCT(p.title)
-FROM playlist p
-INNER JOIN playlists_songs ps ON p.id = ps.playlist_id
-INNER JOIN song s ON ps.song_id = s.id
-INNER JOIN album a ON s.album_id = a.id
-WHERE a.rating > 4.5
-
--- Create a function that will provide artist name, concatenated genre names he has songs in.
-CREATE OR REPLACE FUNCTION get_artist_song_genres(artist_name VARCHAR)
-RETURNS TEXT
-LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-	v_artist_id INTEGER;
-	genres TEXT;
-BEGIN
-	SELECT id
-	INTO v_artist_id
-	FROM artist
-	WHERE name = artist_name;
-	
-	SELECT STRING_AGG(DISTINCT g.name, ' / ')
-	INTO genres
-	FROM song s
-	INNER JOIN songs_genres sg ON s.id = sg.song_id
-	INNER JOIN genre g ON sg.genre_id = g.id
-	WHERE s.artist_id = v_artist_id;
-	
-	RETURN genres;
-END;
-$$;
-
-SELECT get_artist_song_genres('Rihanna')
-
--- Create a function that will provide: Number of songs per album, number of songs per playlist, number of songs per genre
-CREATE OR REPLACE FUNCTION album_songs(album_name VARCHAR)
-RETURNS INTEGER
-LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-	v_album_id INTEGER;
-	number_of_songs INTEGER;
-BEGIN
-	SELECT id
-	INTO v_album_id
-	FROM album
-	WHERE name = album_name;
-	
-	SELECT COUNT(DISTINCT s.name)
-	INTO number_of_songs
-	FROM song s
-	WHERE s.album_id = v_album_id;
-	
-	RETURN number_of_songs;
-END;
-$$;
-
-SELECT album_songs('Scorpion')
-
-
-CREATE OR REPLACE FUNCTION playlist_songs(playlist_title VARCHAR)
-RETURNS INTEGER
-LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-	v_playlist_id INTEGER;
-	number_of_songs INTEGER;
-BEGIN
-	SELECT id
-	INTO v_playlist_id
-	FROM playlist
-	WHERE title = playlist_title;
-	
-	SELECT COUNT(DISTINCT s.name)
-	INTO number_of_songs
-	FROM song s
-	INNER JOIN playlists_songs ps ON s.id = ps.song_id
-	WHERE ps.playlist_id = v_playlist_id;
-	
-	RETURN number_of_songs;
-END;
-$$;
-
-SELECT playlist_songs('Chill Vibes')
-
-
-CREATE OR REPLACE FUNCTION genre_songs(genre_name VARCHAR)
-RETURNS INTEGER
-LANGUAGE PLPGSQL
-AS
-$$
-DECLARE
-	v_genre_id INTEGER;
-	number_of_songs INTEGER;
-BEGIN
-	SELECT id
-	INTO v_genre_id
-	FROM genre
-	WHERE name = genre_name;
-	
-	SELECT COUNT(DISTINCT s.name)
-	INTO number_of_songs
-	FROM song s
-	INNER JOIN songs_genres sg ON s.id = sg.song_id
-	WHERE sg.genre_id = v_genre_id;
-	
-	RETURN number_of_songs;
-END;
-$$;
-
-SELECT genre_songs('Pop')
-
-
-
-
+SELECT * FROM song;
+SELECT * FROM song_lyrics;
 
